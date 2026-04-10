@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+prism_env/
+venv/
+.env
+
+# Data & Simulation Output (Ignore raw files, keep samples)
+data/*.xml
+data/*.csv
+!data/sample_*.csv
+
+# OS generated files
+.DS_Store
+Thumbs.db

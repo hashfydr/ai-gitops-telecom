@@ -1,0 +1,77 @@
+---
+# 1. RBAC Permissions for the GitOps Controller
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gitops-controller-sa
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gitops-controller-role
+  namespace: default
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gitops-controller-rolebinding
+  namespace: default
+subjects:
+- kind: ServiceAccount
+  name: gitops-controller-sa
+roleRef:
+  kind: Role
+  name: gitops-controller-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# 2. Dummy Telecom Application (Deployed in a simulated "Degraded" state)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-telecom-app
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telecom-app
+  template:
+    metadata:
+      labels:
+        app: telecom-app
+    spec:
+      containers:
+      - name: nginx
+        # Purposefully deploying a newer/degraded image to trigger remediation
+        image: nginx:1.21-alpine 
+        ports:
+        - containerPort: 80
+
+---
+# 3. AI-Powered GitOps Controller
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-gitops-controller
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-controller
+  template:
+    metadata:
+      labels:
+        app: ai-controller
+    spec:
+      serviceAccountName: gitops-controller-sa
+      containers:
+      - name: controller
+        image: ai-gitops-controller:v1
+        imagePullPolicy: Never # Crucial: Forces K8s to use your local Minikube build

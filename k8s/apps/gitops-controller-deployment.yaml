@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitops-controller
+  labels:
+    app: gitops-controller
+spec:
+  replicas: 1 # Start with a single replica for automated remediation
+  selector:
+    matchLabels:
+      app: gitops-controller
+  template:
+    metadata:
+      labels:
+        app: gitops-controller
+    spec:
+      serviceAccountName: gitops-controller-sa # Link to the ServiceAccount for RBAC
+      containers:
+      - name: controller
+        image: gitops-controller:1.0.0 # Placeholder: Replace with your actual image name and tag
+        imagePullPolicy: Never # Use 'Never' for local Minikube testing if image is built locally
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        # Environment variables for controller configuration (if any)
+        # env:
+        #   - name: SOME_CONFIG_VAR
+        #     value: "some_value"
+        livenessProbe:
+          exec:
+            command: ["python", "-c", "import os, sys; sys.exit(0 if os.path.exists('/app/gitops_controller.py') else 1)"]
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command: ["python", "-c", "import os, sys; sys.exit(0 if os.path.exists('/app/gitops_controller.py') else 1)"]
+          initialDelaySeconds: 5
+          periodSeconds: 10

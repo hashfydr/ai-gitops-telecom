@@ -1,0 +1,76 @@
+---
+# 1. Target Application (The "Telecom Software" being managed)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dummy-nginx
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: dummy-nginx
+  template:
+    metadata:
+      labels:
+        app: dummy-nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+
+---
+# 2. Service Account for the AI Controller
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prism-gitops-sa
+  namespace: default
+
+---
+# 3. RBAC Role: Grant permissions to modify Deployments
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: prism-gitops-role
+  namespace: default
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+
+---
+# 4. Bind the Role to the Service Account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prism-gitops-rolebinding
+  namespace: default
+subjects:
+- kind: ServiceAccount
+  name: prism-gitops-sa
+  namespace: default
+roleRef:
+  kind: Role
+  name: prism-gitops-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# 5. AI Controller Pod
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: prism-gitops-controller
+  namespace: default
+spec:
+  template:
+    spec:
+      serviceAccountName: prism-gitops-sa
+      containers:
+      - name: gitops-controller
+        image: prism-gitops-controller:v1
+        imagePullPolicy: Never
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+      restartPolicy: Never
