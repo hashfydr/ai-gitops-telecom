@@ -1,11 +1,11 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: dummy-nginx
   labels:
     app: dummy-nginx
+  name: dummy-nginx
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
       app: dummy-nginx
@@ -15,29 +15,29 @@ spec:
         app: dummy-nginx
     spec:
       containers:
-      - name: nginx
-        image: nginx:latest # A simple Nginx image for testing
+      - image: nginx:latest
+        name: nginx
         ports:
         - containerPort: 80
         resources:
-          requests:
-            memory: "64Mi"
-            cpu: "50m"
           limits:
-            memory: "128Mi"
-            cpu: "100m"
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: dummy-nginx-service
   labels:
     app: dummy-nginx
+  name: dummy-nginx-service
 spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
   selector:
     app: dummy-nginx
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 80
-  type: ClusterIP # Use ClusterIP for internal service access
+  type: ClusterIP
