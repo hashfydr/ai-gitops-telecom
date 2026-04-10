@@ -3,3 +3,4 @@ scikit-learn
 numpy
 kubernetes
 joblib
+PyGithub==2.1.1

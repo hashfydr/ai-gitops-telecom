@@ -1,57 +1,81 @@
+import os
 import time
-import subprocess
-import pandas as pd
-from kubernetes import client, config
-from kubernetes.client.rest import ApiException
+import base64
+import yaml
+from github import Github
+from github.GithubException import GithubException
 
-DEPLOYMENT_NAME = "nginx-telecom-app"
-NAMESPACE = "default"
-STABLE_IMAGE = "nginx:1.20-alpine"
+# --- Configuration ---
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+REPO_NAME = "hashfydr/ai-gitops-telecom"
+FILE_PATH = "k8s/apps/dummy-nginx-deployment.yaml"
+CHECK_INTERVAL = 30 # seconds
 
-def init_k8s():
+def evaluate_network_state():
+    """
+    Simulates the ML Model evaluation.
+    In a real scenario, this reads your training_data.csv and runs model.predict()
+    Returns True if network is degraded, False if healthy.
+    """
+    print("[AI] Evaluating network state from simulation data...")
+    # For demonstration of the GitOps loop, we will hardcode a failure detection
+    # after the script starts. In production, connect this to your ML inference.
+    time.sleep(10) 
+    return True 
+
+def remediate_via_gitops():
+    """
+    Acts as the GitOps Developer. Commits a YAML fix to GitHub.
+    """
+    if not GITHUB_TOKEN:
+        print("[ERROR] GITHUB_TOKEN environment variable not set.")
+        return
+
+    g = Github(GITHUB_TOKEN)
+    repo = g.get_repo(REPO_NAME)
+    
     try:
-        config.load_incluster_config()
-    except:
-        config.load_kube_config()
-    return client.AppsV1Api()
+        # 1. Fetch the current deployment YAML from GitHub
+        file_content = repo.get_contents(FILE_PATH, ref="main")
+        yaml_content = base64.b64decode(file_content.content).decode("utf-8")
+        parsed_yaml = yaml.safe_load(yaml_content)
 
-def run_predictive_pipeline():
-    """Triggers Feature Engineering and returns risk status."""
-    print("\n[*] Starting Closed-Loop Pipeline...")
-    try:
-        # 1. Feature Engineering (Parsing ns-3 telemetry)
-        # In a real run, parse_data.py reads the latest XML from ns-3
-        subprocess.run(["python3", "parse_data.py"], check=True)
-        
-        # 2. Predictive Analytics (Inference)
-        # We simulate the inference result based on the parsed CSV logic
-        # In Milestone 4, we will load the actual model.pkl here
-        df = pd.read_csv("flow_metrics.csv")
-        latest_delay = df['delay_sum_ns'].iloc[-1]
-        
-        # Thresholding logic from Milestone 2
-        is_faulty = latest_delay > df['delay_sum_ns'].quantile(0.9)
-        
-        print(f"[i] Feature Extraction: delay_sum_ns = {latest_delay}")
-        return is_faulty
-    except Exception as e:
-        print(f"[!] Pipeline Error: {e}. Falling back to simulation mode.")
-        return False
+        print("[GitOps] Current replicas:", parsed_yaml['spec']['replicas'])
 
-def execute_rollback(apps_v1):
-    try:
-        deployment = apps_v1.read_namespaced_deployment(name=DEPLOYMENT_NAME, namespace=NAMESPACE)
-        if deployment.spec.template.spec.containers[0].image != STABLE_IMAGE:
-            print(f"[!] FAULT DETECTED. Reverting to {STABLE_IMAGE}...")
-            deployment.spec.template.spec.containers[0].image = STABLE_IMAGE
-            apps_v1.patch_namespaced_deployment(name=DEPLOYMENT_NAME, namespace=NAMESPACE, body=deployment)
-            print("[+] Remediation Successful.")
-    except ApiException as e:
-        print(f"[ERROR] K8s API: {e}")
+        # 2. The AI Decision: Scale up to handle degraded network latency
+        new_replicas = 3
+        if parsed_yaml['spec']['replicas'] == new_replicas:
+            print("[GitOps] System already remediated. No action needed.")
+            return
+
+        parsed_yaml['spec']['replicas'] = new_replicas
+        
+        # 3. Convert back to YAML string
+        updated_yaml_str = yaml.dump(parsed_yaml, default_flow_style=False)
+
+        # 4. Commit the change to GitHub
+        print(f"[GitOps] Committing remediation to GitHub: Scaling {parsed_yaml['metadata']['name']} to {new_replicas} replicas.")
+        repo.update_file(
+            path=file_content.path,
+            message="Auto-Remediation: AI detected network degradation, scaling up replicas.",
+            content=updated_yaml_str,
+            sha=file_content.sha,
+            branch="main"
+        )
+        print("[GitOps] Commit successful! ArgoCD will now sync the cluster.")
+
+    except GithubException as e:
+        print(f"[ERROR] GitHub API Error: {e}")
 
 if __name__ == "__main__":
-    api = init_k8s()
+    print("Starting AI GitOps Controller in true Declarative Mode...")
     while True:
-        if run_predictive_pipeline():
-            execute_rollback(api)
-        time.sleep(10)
+        is_degraded = evaluate_network_state()
+        if is_degraded:
+            print("[AI] ALERT: Network degradation predicted!")
+            remediate_via_gitops()
+            # Sleep longer after remediation to allow ArgoCD to sync
+            time.sleep(120) 
+        else:
+            print("[AI] Network healthy.")
+            time.sleep(CHECK_INTERVAL)
