@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: telecom-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    # ⚠️ CHANGE THIS URL TO YOUR ACTUAL GITHUB REPO URL ⚠️
+    repoURL: 'https://github.com/hashfydr/ai-gitops-telecom'
+    path: k8s/apps
+    targetRevision: main
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
