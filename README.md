@@ -36,31 +36,33 @@ A GitHub Personal Access Token (stored in a local .env file)
 
 ##  How to Run
 1. Start the Infrastructure
-
-  Start your Minikube cluster and set up port-forwarding to access the ArgoCD UI:
-
-minikube start
-kubectl port-forward svc/argocd-server -n argocd 8080:443
+```
+    Start your Minikube cluster and set up port-forwarding to access the ArgoCD UI:
+    minikube start
+    kubectl port-forward svc/argocd-server -n argocd 8080:443
+```
 2. Generate Network Data
-
 Run the Mininet simulation to generate the baseline dataset containing healthy and degraded traffic:
-
+```
 sudo python3 simulation/network_sim.py
-3. Train the Model
+```
+4. Train the Model
 
 Activate your Python virtual environment and train the classifier on the generated data:
-
+```
 source venv/bin/activate
 python3 src/ai/train_model.py
+```
 4. Start the Controller
 
 Run the orchestrator script to begin monitoring the network and enabling automated scaling:
-
+```
 python3 src/controller/gitops_controller.py
-Workflow Summary
+```
+
+Workflow Summary:
 
 Once running:
-
 The controller continuously monitors simulated network conditions.
 The ML model detects latency spikes or degraded performance.
 The controller commits updated Kubernetes configurations to GitHub.
@@ -71,7 +73,3 @@ Closed-loop automation using AI + GitOps
 Real-time anomaly detection with machine learning
 Fully declarative infrastructure updates
 Zero manual intervention for scaling decisions
-
-If you want, I can next:
-- Make this **GitHub “standout” level (badges, diagrams, visuals)**
-- Or convert it into a **resume/project description (ATS optimized)**
