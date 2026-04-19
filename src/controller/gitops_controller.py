@@ -1,60 +1,83 @@
 import os
+import sys
 import time
 import base64
 import yaml
-from github import Github
+from dotenv import load_dotenv  # <-- ADD THIS
+from github import Github, Auth
 from github.GithubException import GithubException
+
+env_path = os.path.join(os.getcwd(), '.env')
+if not os.path.exists(env_path):
+    print(f"[CRITICAL ERROR] No .env file found at: {env_path}")
+    sys.exit(1)
+
+# Load the hidden .env file automatically
+load_dotenv()  # <-- ADD THIS
 
 # --- Configuration ---
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-REPO_NAME = "hashfydr/ai-gitops-telecom"
+
+if not GITHUB_TOKEN:
+    print("[CRITICAL ERROR] The .env file was found, but GITHUB_TOKEN is empty inside it!")
+    print("Make sure the file literally contains: GITHUB_TOKEN=\"ghp_your_token\"")
+    sys.exit(1)
+# configuration
+REPO_NAME = "hashfydr/ai-gitops-telecom" # <-- Ensure your username is here
 FILE_PATH = "k8s/apps/dummy-nginx-deployment.yaml"
 CHECK_INTERVAL = 30 # seconds
-
 def evaluate_network_state():
-    """
-    Simulates the ML Model evaluation.
-    In a real scenario, this reads your training_data.csv and runs model.predict()
-    Returns True if network is degraded, False if healthy.
-    """
+    """Simulates the ML Model evaluation."""
     print("[AI] Evaluating network state from simulation data...")
-    # For demonstration of the GitOps loop, we will hardcode a failure detection
-    # after the script starts. In production, connect this to your ML inference.
     time.sleep(10) 
     return True 
 
 def remediate_via_gitops():
-    """
-    Acts as the GitOps Developer. Commits a YAML fix to GitHub.
-    """
+    """Acts as the GitOps Developer. Commits a YAML fix to GitHub."""
     if not GITHUB_TOKEN:
         print("[ERROR] GITHUB_TOKEN environment variable not set.")
         return
 
-    g = Github(GITHUB_TOKEN)
+    # Fix 1: Use the modern Auth.Token method to eliminate deprecation warnings
+    auth = Auth.Token(GITHUB_TOKEN)
+    g = Github(auth=auth)
     repo = g.get_repo(REPO_NAME)
     
     try:
         # 1. Fetch the current deployment YAML from GitHub
         file_content = repo.get_contents(FILE_PATH, ref="main")
         yaml_content = base64.b64decode(file_content.content).decode("utf-8")
-        parsed_yaml = yaml.safe_load(yaml_content)
+        
+        # Fix 2: Parse Multi-Document YAML files (handling '---')
+        docs = list(yaml.safe_load_all(yaml_content))
 
-        print("[GitOps] Current replicas:", parsed_yaml['spec']['replicas'])
+        # 2. Iterate through documents to find the Deployment
+        action_taken = False
+        for doc in docs:
+            if doc and doc.get('kind') == 'Deployment':
+                print(f"[GitOps] Found Deployment: {doc['metadata']['name']}")
+                current_replicas = doc['spec'].get('replicas', 1)
+                print(f"[GitOps] Current replicas: {current_replicas}")
 
-        # 2. The AI Decision: Scale up to handle degraded network latency
-        new_replicas = 3
-        if parsed_yaml['spec']['replicas'] == new_replicas:
-            print("[GitOps] System already remediated. No action needed.")
+                new_replicas = 3
+                if current_replicas == new_replicas:
+                    print("[GitOps] System already remediated. No action needed.")
+                    return
+
+                # Update the replicas
+                doc['spec']['replicas'] = new_replicas
+                action_taken = True
+                break # We just update the first deployment we find
+
+        if not action_taken:
+            print("[ERROR] No Deployment found in the YAML file to update.")
             return
 
-        parsed_yaml['spec']['replicas'] = new_replicas
-        
-        # 3. Convert back to YAML string
-        updated_yaml_str = yaml.dump(parsed_yaml, default_flow_style=False)
+        # 3. Convert back to a multi-document YAML string safely
+        updated_yaml_str = yaml.safe_dump_all(docs, default_flow_style=False)
 
         # 4. Commit the change to GitHub
-        print(f"[GitOps] Committing remediation to GitHub: Scaling {parsed_yaml['metadata']['name']} to {new_replicas} replicas.")
+        print("[GitOps] Committing remediation to GitHub: Scaling up replicas.")
         repo.update_file(
             path=file_content.path,
             message="Auto-Remediation: AI detected network degradation, scaling up replicas.",
@@ -74,7 +97,6 @@ if __name__ == "__main__":
         if is_degraded:
             print("[AI] ALERT: Network degradation predicted!")
             remediate_via_gitops()
-            # Sleep longer after remediation to allow ArgoCD to sync
             time.sleep(120) 
         else:
             print("[AI] Network healthy.")
