@@ -60,16 +60,17 @@ Run the orchestrator script to begin monitoring the network and enabling automat
 python3 src/controller/gitops_controller.py
 ```
 
-Workflow Summary:
+##    Workflow Summary:
 
 Once running:
-The controller continuously monitors simulated network conditions.
-The ML model detects latency spikes or degraded performance.
-The controller commits updated Kubernetes configurations to GitHub.
-ArgoCD detects the change and syncs it to the cluster.
-Kubernetes scales pods automatically to stabilize the network.
-Key Highlights
-Closed-loop automation using AI + GitOps
-Real-time anomaly detection with machine learning
-Fully declarative infrastructure updates
-Zero manual intervention for scaling decisions
+>    The controller continuously monitors simulated network conditions.
+>    The ML model detects latency spikes or degraded performance.
+>    The controller commits updated Kubernetes configurations to GitHub.
+>    ArgoCD detects the change and syncs it to the cluster.
+>    Kubernetes scales pods automatically to stabilize the network.
+
+##    Key Highlights
+>    Closed-loop automation using AI + GitOps
+>    Real-time anomaly detection with machine learning
+>    Fully declarative infrastructure updates
+>    Zero manual intervention for scaling decisions
