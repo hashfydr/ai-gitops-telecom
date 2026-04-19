@@ -3,84 +3,84 @@ import sys
 import time
 import base64
 import yaml
-from dotenv import load_dotenv  # <-- ADD THIS
+import joblib
+import numpy as np
+import pandas as pd  # <-- Added to fix the Sklearn warning
+from dotenv import load_dotenv
 from github import Github, Auth
 from github.GithubException import GithubException
 
+# --- Load Environment Variables ---
 env_path = os.path.join(os.getcwd(), '.env')
 if not os.path.exists(env_path):
     print(f"[CRITICAL ERROR] No .env file found at: {env_path}")
     sys.exit(1)
 
-# Load the hidden .env file automatically
-load_dotenv()  # <-- ADD THIS
+load_dotenv()
+
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+if not GITHUB_TOKEN:
+    print("[CRITICAL ERROR] GITHUB_TOKEN is empty inside .env!")
+    sys.exit(1)
 
 # --- Configuration ---
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-
-if not GITHUB_TOKEN:
-    print("[CRITICAL ERROR] The .env file was found, but GITHUB_TOKEN is empty inside it!")
-    print("Make sure the file literally contains: GITHUB_TOKEN=\"ghp_your_token\"")
-    sys.exit(1)
-# configuration
-REPO_NAME = "hashfydr/ai-gitops-telecom" # <-- Ensure your username is here
+REPO_NAME = "hashfydr/ai-gitops-telecom" # <-- Your repo
 FILE_PATH = "k8s/apps/dummy-nginx-deployment.yaml"
 CHECK_INTERVAL = 30 # seconds
-def evaluate_network_state():
-    """Simulates the ML Model evaluation."""
-    print("[AI] Evaluating network state from simulation data...")
-    time.sleep(10) 
-    return True 
+
+# --- Load AI Model ---
+try:
+    model = joblib.load('models/network_model.joblib')
+except FileNotFoundError:
+    print("[CRITICAL ERROR] models/network_model.joblib not found. Run training script first.")
+    sys.exit(1)
+
+# --- Functions ---
+def check_network_with_ai(current_latency):
+    """Uses the trained ML model to predict network state."""
+    # FIX: Send a Pandas DataFrame with the column name 'latency' to suppress the Sklearn warning
+    input_data = pd.DataFrame([[current_latency]], columns=['latency'])
+    prediction = model.predict(input_data)[0]
+    
+    if prediction == 1:
+        print(f"!!! AI PREDICTION: Network is DEGRADED (Latency: {current_latency}ms) !!!")
+        return True
+    else:
+        print(f"[AI] Network healthy ({current_latency}ms).")
+        return False
 
 def remediate_via_gitops():
-    """Acts as the GitOps Developer. Commits a YAML fix to GitHub."""
-    if not GITHUB_TOKEN:
-        print("[ERROR] GITHUB_TOKEN environment variable not set.")
-        return
-
-    # Fix 1: Use the modern Auth.Token method to eliminate deprecation warnings
+    """Pushes a commit to GitHub to scale up replicas."""
+    print(f"[GitOps] Authenticating to GitHub...")
     auth = Auth.Token(GITHUB_TOKEN)
     g = Github(auth=auth)
-    repo = g.get_repo(REPO_NAME)
-    
+
     try:
-        # 1. Fetch the current deployment YAML from GitHub
-        file_content = repo.get_contents(FILE_PATH, ref="main")
+        repo = g.get_repo(REPO_NAME)
+        file_content = repo.get_contents(FILE_PATH)
         yaml_content = base64.b64decode(file_content.content).decode("utf-8")
         
-        # Fix 2: Parse Multi-Document YAML files (handling '---')
-        docs = list(yaml.safe_load_all(yaml_content))
-
-        # 2. Iterate through documents to find the Deployment
-        action_taken = False
-        for doc in docs:
-            if doc and doc.get('kind') == 'Deployment':
-                print(f"[GitOps] Found Deployment: {doc['metadata']['name']}")
-                current_replicas = doc['spec'].get('replicas', 1)
-                print(f"[GitOps] Current replicas: {current_replicas}")
-
-                new_replicas = 3
-                if current_replicas == new_replicas:
-                    print("[GitOps] System already remediated. No action needed.")
-                    return
-
-                # Update the replicas
-                doc['spec']['replicas'] = new_replicas
-                action_taken = True
-                break # We just update the first deployment we find
-
-        if not action_taken:
-            print("[ERROR] No Deployment found in the YAML file to update.")
-            return
-
-        # 3. Convert back to a multi-document YAML string safely
-        updated_yaml_str = yaml.safe_dump_all(docs, default_flow_style=False)
-
-        # 4. Commit the change to GitHub
-        print("[GitOps] Committing remediation to GitHub: Scaling up replicas.")
+        # FIX: Handle multiple YAML documents separated by "---"
+        parsed_yamls = list(yaml.safe_load_all(yaml_content))
+        updated_yamls = []
+        current_replicas = 0
+        new_replicas = 0
+        
+        for doc in parsed_yamls:
+            # Only change replicas if the document is a Deployment
+            if doc and doc.get("kind") == "Deployment":
+                current_replicas = doc["spec"].get("replicas", 1)
+                new_replicas = current_replicas + 1
+                doc["spec"]["replicas"] = new_replicas
+            updated_yamls.append(doc)
+        
+        # Dump all documents back into a single string with --- separators
+        updated_yaml_str = yaml.dump_all(updated_yamls, default_flow_style=False)
+        
+        print(f"[GitOps] Pushing scale-up ({current_replicas} -> {new_replicas}) to GitHub...")
         repo.update_file(
             path=file_content.path,
-            message="Auto-Remediation: AI detected network degradation, scaling up replicas.",
+            message=f"Auto-Remediation: AI detected degradation, scaled replicas {current_replicas}->{new_replicas}.",
             content=updated_yaml_str,
             sha=file_content.sha,
             branch="main"
@@ -90,14 +90,25 @@ def remediate_via_gitops():
     except GithubException as e:
         print(f"[ERROR] GitHub API Error: {e}")
 
+# --- Main Execution Loop ---
 if __name__ == "__main__":
-    print("Starting AI GitOps Controller in true Declarative Mode...")
+    print("Starting AI GitOps Controller...")
+    print("AI Model loaded and monitoring network...")
+    
     while True:
-        is_degraded = evaluate_network_state()
+        # Simulate a live feed picking healthy (15ms) or degraded (510ms) latency
+        current_latency = np.random.choice([15.0, 510.0]) 
+        
+        print(f"\n[Monitor] Current Network Latency: {current_latency}ms")
+        
+        # Ask the AI
+        is_degraded = check_network_with_ai(current_latency)
+        
         if is_degraded:
-            print("[AI] ALERT: Network degradation predicted!")
+            print("[Decision] AI confirms degradation. Initiating GitOps scaling...")
             remediate_via_gitops()
+            
+            print("[Cooldown] Waiting 2 minutes for ArgoCD to sync and cluster to stabilize...")
             time.sleep(120) 
         else:
-            print("[AI] Network healthy.")
             time.sleep(CHECK_INTERVAL)
